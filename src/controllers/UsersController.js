@@ -1,69 +1,74 @@
-const {hash} = require("bcryptjs")
-const AppError = require("../utils/AppError")
-const sqliteConnection  = require("../database/sqlite")
+const { hash, compare } = require('bcryptjs')
+const AppError = require('../utils/AppError')
+const sqliteConnection = require('../database/sqlite')
 
 class UsersController {
+  async create(request, response) {
+    const { name, email, password } = request.body
 
- async create(request, response) {
+    const database = await sqliteConnection()
+    const checkUserExists = await database.get("SELECT * FROM users WHERE email = (?)", [email])
 
-        const { name, email, password} = request.body
-
-          const database = await sqliteConnection()
-          const checkUserExists = await database.get("SELECT * FROM users WHERE email = (?)", [email])
-          
-
-          if (checkUserExists) {
-            throw new AppError("Este email já esta em uso.")
-          }
-
-         const PasswordEcrypted = await hash(password, 8);
-
-          await database.run(
-            "INSERT INTO users (name, email, password) VALUES (?, ?, ?)",
-            [name, email, PasswordEcrypted]
-          )
-      
-
-          return response.status(201).json()
-
+    if (checkUserExists){
+      throw new AppError("Este e-mail já está em uso.")
     }
 
- async update(request, response) {
-    const {name, email} = request.body;
-    const {id} = request.params;
+    const hashedPassword = await hash(password, 8)
 
-    const database = await sqliteConnection();
-    const user = await database.get("SELECT * FROM users WHERE id = (?)", [id]);
+    await database.run(
+      "INSERT INTO users (name, email, password) VALUES (?, ?, ?)",
+      [name, email, hashedPassword]
+    )
 
-    if (!user) {
-      throw new AppError("usuario não encontrado.")
-    };
+    return response.status(201).json()
+  }
 
-    const userWithUpdateEmail = await database.get("SELECT * FROM users WHERE email = (?)", [email]);
+  async update(request, response) {
+     const { name, email, password, old_password } = request.body
+     const { id } = request.params
 
-    if(userWithUpdateEmail && userWithUpdateEmail.id !== user.id) {
+     const database = await sqliteConnection()
+     const user = await database.get("SELECT * FROM users WHERE id = (?)", [id])
+
+     if(!user) {
+      throw new AppError("Usuário não encontrado")
+     }
+
+     const userWithUpdatedEmail = await database.get("SELECT * FROM users WHERE email = (?)", [email])
+
+     if(userWithUpdatedEmail && userWithUpdatedEmail.id !== user.id) {
       throw new AppError("Este e-mail já está em uso.")
      }
 
      user.name = name
      user.email= email
 
+     if(password && !old_password) {
+      throw new AppError("Você informar a senha antiga para definir a nova senha")
+     }
+
+     if(password && old_password) {
+      const checkOldPassword = await compare(old_password, user.password)
+
+      if(!checkOldPassword) {
+        throw new AppError("A senha antiga não confere.")
+      }
+
+      user.password = await hash(password, 8)
+     }
+
      await database.run(`
       UPDATE users SET
       name = ?,
       email = ?,
-      updated_at = ?
+      password = ?,
+      updated_at = DATETIME('now')
       WHERE id = ?`, 
-      [user.name, user.email, new Date(), id]
+      [user.name, user.email, user.password, id]
     )
 
-    return response.status(200).json("Dados atualizados com sucesso!")
-
+    return response.json()
   }
 }
 
-
 module.exports = UsersController
-
-
-
