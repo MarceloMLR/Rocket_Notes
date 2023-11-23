@@ -70,7 +70,7 @@ class NotesController {
             const filterTags = tags.split(',').map(tag => tag.trim())
 
             notes = await knex("tags").select([
-                "note_id",
+                "notes.id",
                 "notes.title",
                 "notes.user_id",
             ])
